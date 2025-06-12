@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Todo } from './entity/todo.entity';
@@ -18,21 +18,35 @@ export class TodoAppRepository {
   ) {}
 
   async createUser(data: CreateUserDto): Promise<User> {
+	const existingUser = await this.userRepo.findOne({ where: { username: data.username } });
+
+	if (existingUser) {
+		throw new BadRequestException('Username already exists');
+	}
+
     const hashedPassword = await bcrypt.hash(data.password, 10);
     const user = this.userRepo.create({
       username: data.username,
       password: hashedPassword,
     });
-    return this.userRepo.save(user);
+    return await this.userRepo.save(user);
   }
 
-  async validateUser(username: string, password: string): Promise<User | null> {
-    const user = await this.userRepo.findOneBy({ username });
-    if (user && await bcrypt.compare(password, user.password)) {
-      return user;
-    }
-    return null;
-  }
+	async validateUser(username: string, password: string): Promise<User> {
+		const user = await this.userRepo.findOneBy({ username });
+
+		if (!user) {
+			throw new BadRequestException('Username not found');
+		}
+
+		const isPasswordValid = await bcrypt.compare(password, user.password);
+
+		if (!isPasswordValid) {
+			throw new BadRequestException('Incorrect password');
+		}
+
+		return user;
+	}
 
   async fetchAllTodos(userId: string): Promise<Todo[]> {
     const todos = await this.todoRepo.find({
